@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    body {
+      background-color: #0a0a0a; color: #00ff00;
+      font-family: 'Courier New', Courier, monospace;
+      display: flex; flex-direction: column; align-items: center;
+      padding: 20px; margin: 0; box-sizing: border-box; touch-action: manipulation;
+    }
+    .terminal {
+      width: 100%; max-width: 350px; background: #111;
+      border: 1px solid #00ff00; border-radius: 10px; padding: 15px;
+      box-shadow: 0 0 15px rgba(0, 255, 0, 0.2); text-align: center;
+    }
+    h2 { margin: 0 0 5px 0; font-size: 18px; text-transform: uppercase; letter-spacing: 1px; }
+    p { margin: 0 0 15px 0; font-size: 12px; color: #00aa00; }
+    
+    .grid { display: grid; grid-template-rows: repeat(6, 1fr); gap: 8px; margin-bottom: 20px; }
+    .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .box {
+      width: 100%; aspect-ratio: 1; border: 2px solid #333;
+      display: flex; justify-content: center; align-items: center;
+      font-size: 28px; font-weight: bold; border-radius: 5px; color: white;
+    }
+    .box.active { border-color: #00ff00; }
+    .box.green { background-color: #538d4e; border-color: #538d4e; }
+    .box.yellow { background-color: #b59f3b; border-color: #b59f3b; }
+    .box.gray { background-color: #3a3a3c; border-color: #3a3a3c; color: #888; }
+    
+    .keypad {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+    }
+    button {
+      background: #222; color: #00ff00; border: 1px solid #005500;
+      padding: 15px 0; font-size: 20px; font-family: inherit; font-weight: bold;
+      border-radius: 5px; cursor: pointer;
+    }
+    button:active { background: #00ff00; color: #000; }
+    button.wide { grid-column: span 3; background: #004400; }
+    
+    #message { margin-top: 15px; font-weight: bold; min-height: 20px; }
+  </style>
+</head>
+<body>
+
+  <div class="terminal">
+    <h2 id="target-name">UPLINK ESTABLISHED</h2>
+    <p>CRACK THE 4-DIGIT PIN</p>
+    
+    <div class="grid" id="grid"></div>
+    <div id="message"></div>
+    
+    <div class="keypad" id="keypad">
+      <button onclick="press('1')">1</button>
+      <button onclick="press('2')">2</button>
+      <button onclick="press('3')">3</button>
+      <button onclick="press('4')">4</button>
+      <button onclick="press('5')">5</button>
+      <button onclick="press('6')">6</button>
+      <button onclick="press('7')">7</button>
+      <button onclick="press('8')">8</button>
+      <button onclick="press('9')">9</button>
+      <button onclick="press('DEL')">DEL</button>
+      <button onclick="press('0')">0</button>
+      <button onclick="press('ENT')">ENT</button>
+    </div>
+  </div>
+
+  <script>
+    let secretCode = "1234"; // Default fallback
+    let currentGuess = "";
+    let currentRow = 0;
+    const maxRows = 6;
+    let gameOver = false;
+
+    // Load AI Data
+    const params = new URLSearchParams(window.location.search);
+    try {
+      if (params.has('data')) {
+        const parsed = JSON.parse(decodeURIComponent(params.get('data')));
+        if (parsed.secret_code) secretCode = String(parsed.secret_code);
+        if (parsed.target) document.getElementById('target-name').innerText = parsed.target;
+      }
+    } catch (e) { console.error(e); }
+
+    // Build the empty grid
+    const grid = document.getElementById('grid');
+    for (let i = 0; i < maxRows; i++) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.id = `row-${i}`;
+      for (let j = 0; j < 4; j++) {
+        const box = document.createElement('div');
+        box.className = 'box';
+        box.id = `box-${i}-${j}`;
+        row.appendChild(box);
+      }
+      grid.appendChild(row);
+    }
+    updateActiveRowBorder();
+
+    function press(key) {
+      if (gameOver) return;
+      if (key === 'DEL') {
+        currentGuess = currentGuess.slice(0, -1);
+      } else if (key === 'ENT') {
+        if (currentGuess.length === 4) checkGuess();
+        else showMessage("NEED 4 DIGITS");
+      } else {
+        if (currentGuess.length < 4) currentGuess += key;
+      }
+      updateGrid();
+    }
+
+    function updateGrid() {
+      for (let i = 0; i < 4; i++) {
+        const box = document.getElementById(`box-${currentRow}-${i}`);
+        box.innerText = currentGuess[i] || "";
+      }
+    }
+
+    function updateActiveRowBorder() {
+      document.querySelectorAll('.box').forEach(b => b.classList.remove('active'));
+      if (currentRow < maxRows && !gameOver) {
+        for (let i = 0; i < 4; i++) document.getElementById(`box-${currentRow}-${i}`).classList.add('active');
+      }
+    }
+
+    function showMessage(msg) {
+      document.getElementById('message').innerText = msg;
+      setTimeout(() => { if(!gameOver) document.getElementById('message').innerText = ""; }, 2000);
+    }
+
+    function checkGuess() {
+      let secretArr = secretCode.split('');
+      let guessArr = currentGuess.split('');
+      let boxColors = ["gray", "gray", "gray", "gray"];
+
+      // First pass: Find exact matches (Green)
+      for (let i = 0; i < 4; i++) {
+        if (guessArr[i] === secretArr[i]) {
+          boxColors[i] = "green";
+          secretArr[i] = null; // Mark as used
+          guessArr[i] = null;  // Mark as used
+        }
+      }
+
+      // Second pass: Find wrong position matches (Yellow)
+      for (let i = 0; i < 4; i++) {
+        if (guessArr[i] !== null) {
+          let foundIndex = secretArr.indexOf(guessArr[i]);
+          if (foundIndex > -1) {
+            boxColors[i] = "yellow";
+            secretArr[foundIndex] = null; // Mark as used
+          }
+        }
+      }
+
+      // Apply colors
+      for (let i = 0; i < 4; i++) {
+        const box = document.getElementById(`box-${currentRow}-${i}`);
+        box.classList.add(boxColors[i]);
+      }
+
+      // Check win/loss
+      if (currentGuess === secretCode) {
+        showMessage("ACCESS GRANTED!");
+        gameOver = true;
+      } else {
+        currentRow++;
+        currentGuess = "";
+        if (currentRow >= maxRows) {
+          showMessage(`LOCKOUT! CODE WAS ${secretCode}`);
+          gameOver = true;
+        } else {
+          updateActiveRowBorder();
+        }
+      }
+    }
+  </script>
+</body>
+</html>
